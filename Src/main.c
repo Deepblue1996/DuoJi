@@ -70,8 +70,10 @@ int stringToInt(const char *str);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
 volatile uint8_t isConnect = false;
 volatile int root = 75;
+
 /* USER CODE END 0 */
 
 /**
