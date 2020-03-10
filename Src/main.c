@@ -57,11 +57,22 @@
 void SystemClock_Config(void);
 
 /* USER CODE BEGIN PFP */
+char *send(UART_HandleTypeDef *huart, char *msg);
+
+char *response(UART_HandleTypeDef *huart);
+
 char *sendResponse(char *msg, char *isOk);
+
+bool connectService();
+
+int stringToInt(const char *str);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+volatile uint8_t isConnect = false;
+volatile int root = 75;
 /* USER CODE END 0 */
 
 /**
@@ -93,6 +104,7 @@ int main(void) {
     MX_GPIO_Init();
     MX_TIM2_Init();
     MX_USART1_UART_Init();
+    MX_USART2_UART_Init();
     /* USER CODE BEGIN 2 */
     /* USER CODE END 2 */
 
@@ -102,55 +114,55 @@ int main(void) {
         /* USER CODE END WHILE */
 
         /* USER CODE BEGIN 3 */
+
         // 200/20=10 200-x=y y*10=ms
         // 1000/20 = 50/ms
         // 0.5ms  = 25  ----------------正向最大转速
         // 1.5ms  = 75  ----------------速度为0
         // 2.5ms  = 125 ----------------反向最大转速
 
-        char *string = sendResponse("AT+GMR\r\n", "OK");
+        // 连接服务器
+        if (connectService()) {
 
-        HAL_Delay(1000);
+            // 接收响应内容
+            char *stringRe = response(&huart1);
+            if (strcmp(stringRe, "") != 0 && strcmp(stringRe, "\r") != 0) {
+                send(&huart2, stringRe);
+                send(&huart2, "\r\n");
+                root = stringToInt(stringRe);
+                if(root>125) {
+                    root = 125;
+                } else if(root < 25) {
+                    root = 25;
+                }
+            }
+            free(stringRe);
 
-        //responseData(&huart1, rxs);
-        //sendData(&huart1, msg);
+            HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
 
-//        HAL_UART_Receive(&huart1, (uint8_t *) rxBuffer2, strlen(rxBuffer2), 1000);
+            //__HAL_TIM_SetCompare(&htim2, TIM_CHANNEL_3, 125);
+            //HAL_Delay(200);
 
-        //HAL_UART_Receive_IT(&huart1, (uint8_t *) rxBuffer2, 100);
-        //HAL_UART_Receive_IT(&huart2, (uint8_t *) rxBuffer, 100);
+            __HAL_TIM_SetCompare(&htim2, TIM_CHANNEL_3, root);
+            HAL_Delay(30);
 
-/*        HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
-//
-//        // 暂停
-        // 1000 100%
-        __HAL_TIM_SetCompare(&htim2, TIM_CHANNEL_3, 125);
-//
-        HAL_Delay(200);
+            //__HAL_TIM_SetCompare(&htim2, TIM_CHANNEL_3, 25);
+            //HAL_Delay(200);
 
-        __HAL_TIM_SetCompare(&htim2, TIM_CHANNEL_3, 75);
-//
-        HAL_Delay(200);
+            // 请求发送内容
+//            send(&huart2,"AT+CIPSEND=5\r\n");
+//            char *string6 = sendResponse("AT+CIPSEND=5\r\n", "OK");
+//            send(&huart2, string6);
+//            send(&huart2, "\r\n");
 
-        __HAL_TIM_SetCompare(&htim2, TIM_CHANNEL_3, 25);
-//
-        HAL_Delay(200);*/
+            // 发送内容
+//            send(&huart2, "Hello\r\n");
+//            char *string7 = sendResponse("Hello\r\n", "OK");
+//            send(&huart2, string7);
+//            send(&huart2, "\r\n");
+        }
 
-//        __HAL_TIM_SetCompare(&htim2, TIM_CHANNEL_3, 400);
-//
-//        HAL_Delay(600);
-//
-//        __HAL_TIM_SetCompare(&htim2, TIM_CHANNEL_3, 1000);
-//
-//        HAL_Delay(600);
-//
-//        __HAL_TIM_SetCompare(&htim2, TIM_CHANNEL_3, 800);
-//
-//        HAL_Delay(600);
-//
-//        __HAL_TIM_SetCompare(&htim2, TIM_CHANNEL_3, 200);
-//
-//        HAL_Delay(600);
+
     }
     /* USER CODE END 3 */
 }
@@ -196,6 +208,44 @@ void SystemClock_Config(void) {
 }
 
 /* USER CODE BEGIN 4 */
+/**
+ * 发送数据
+ * @param huart
+ * @param msg
+ * @return
+ */
+char *send(UART_HandleTypeDef *huart, char *msg) {
+    if (strcmp(msg, "") == 0) {
+        return "";
+    }
+    HAL_UART_Transmit(huart, (uint8_t *) msg, strlen(msg), 30);
+    /*Receive command and save in "rxBuffer" array with 5s timeout*/
+}
+
+/**
+ * 接收数据
+ * @param huart
+ * @return
+ */
+char *response(UART_HandleTypeDef *huart) {
+    char *rxBuffer = malloc(100);
+    memset(rxBuffer, 0, 100);
+    HAL_UART_Receive(huart, (uint8_t *) rxBuffer, 100, 300);
+
+    char *str = strchr(rxBuffer, ':');
+
+    if (str != NULL) {
+        char *rxBufferTemp = malloc(100);
+        memset(rxBufferTemp, 0, 100);
+        strncpy(rxBufferTemp, str + 1, strlen(str) - 1);
+
+        free(rxBuffer);
+        return rxBufferTemp;
+    }
+
+    return rxBuffer;
+}
+
 char *sendResponse(char *msg, char *isOk) {
 
     int index = 5;
@@ -203,11 +253,12 @@ char *sendResponse(char *msg, char *isOk) {
     char rxBuffer[255];
 
     while (index > 0) {
-        HAL_UART_Transmit(&huart1, (uint8_t *) msg, strlen(msg), 1);
+        HAL_UART_Transmit(&huart1, (uint8_t *) msg, strlen(msg), 30);
         /*Receive command and save in "rxBuffer" array with 5s timeout*/
-        HAL_UART_Receive(&huart1, (uint8_t *) rxBuffer, sizeof(rxBuffer), 5000);
+        HAL_UART_Receive(&huart1, (uint8_t *) rxBuffer, 255, 30);
         /*Process recived command*/
-        if (strstr(rxBuffer, isOk) != 0) {
+
+        if (strstr(rxBuffer, isOk) != 0 || strstr(rxBuffer, "ALREADY CONNECTED") != 0) {
             char *str = strstr(rxBuffer, "\000");
             char *dest = malloc(strlen(str));
             memset(dest, 0, strlen(dest));
@@ -216,9 +267,34 @@ char *sendResponse(char *msg, char *isOk) {
             dest[len - 1] = '\0';
             return dest;
         }
+        if (strstr(rxBuffer, "ERROR") == 0) {
+            return "ERROR";
+        }
         index--;
     }
     return "ERROR";
+}
+
+/**
+ * 连接服务器
+ * @return
+ */
+bool connectService() {
+    if (isConnect) {
+        return true;
+    }
+    send(&huart2, "AT+CIPSTART=\"TCP\",\"192.168.0.112\",8088\r\n");
+    char *string5 = sendResponse("AT+CIPSTART=\"TCP\",\"192.168.0.112\",8088\r\n", "OK");
+    if (strstr(string5, "ALREADY CONNECTED") != 0) {
+        send(&huart2, "device connected\r\n");
+        isConnect = true;
+        return true;
+    } else {
+        send(&huart2, string5);
+        send(&huart2, "\r\n");
+        isConnect = false;
+        return false;
+    }
 }
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
@@ -244,6 +320,44 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     }
 }
 
+int stringToInt(const char *str) {
+    char *p = str;
+
+    int nNUM = 0;
+
+    bool bFlage = true;
+
+    if (*p == '-') {
+        bFlage = false;
+        p++;
+    } else if (*p == '+') {
+        p++;
+    }
+
+    while (*p != '\0') {
+        if ((*p < '0') || (*p > '9')) {
+            nNUM = 0;
+            break;
+        }
+
+        if ((nNUM * 10) > 0
+            && (*p - '0') > 0
+            && (2147483647 - (nNUM * 10) < (*p - '0'))) {
+            nNUM = 0;
+            break;
+        }
+
+        nNUM = nNUM * 10 + (*p - '0');
+
+        p++;
+    }
+
+    if (!bFlage) {
+        nNUM = 0 - nNUM;
+    }
+
+    return nNUM;
+}
 /* USER CODE END 4 */
 
 /**
