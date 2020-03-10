@@ -73,6 +73,7 @@ int stringToInt(const char *str);
 
 volatile uint8_t isConnect = false;
 volatile int root = 75;
+
 /* USER CODE END 0 */
 
 /**
